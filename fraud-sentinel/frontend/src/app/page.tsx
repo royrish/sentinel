@@ -52,6 +52,13 @@ import {
 type RiskFilter = RiskLevel | "all";
 type StatusFilter = AlertStatus | "all";
 type LoadState = "loading" | "ready" | "error";
+type DemoScenario = { alertId: string; title: string; evidenceLabel: string };
+
+const DEMO_SCENARIO_CANDIDATES: DemoScenario[] = [
+  { alertId: "FS-TX-00020001", title: "Collect request", evidenceLabel: "Large collect · first-time payee" },
+  { alertId: "FS-TX-00020002", title: "Mule-chain path", evidenceLabel: "Rapid multi-account transfers" },
+  { alertId: "FS-TX-00020006", title: "Circular flow", evidenceLabel: "Closed account cycle" },
+];
 
 const moneyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -272,11 +279,22 @@ function NetworkFindingCard({ finding }: { finding: NetworkEvidence }) {
           </div>
         ))}
       </div>
-      <div className="transaction-chips" aria-label="Related transactions">
-        {finding.transaction_ids.map((transactionId) => (
-          <span className="transaction-chip" key={transactionId}>{transactionId}</span>
-        ))}
-      </div>
+      {finding.transaction_ids.length <= 5 ? (
+        <div className="transaction-chips" aria-label="Related transactions">
+          {finding.transaction_ids.map((transactionId) => (
+            <span className="transaction-chip" key={transactionId}>{transactionId}</span>
+          ))}
+        </div>
+      ) : (
+        <details className="transaction-disclosure">
+          <summary>Show related transactions ({finding.transaction_ids.length})</summary>
+          <div className="transaction-chips" aria-label="Related transactions">
+            {finding.transaction_ids.map((transactionId) => (
+              <span className="transaction-chip" key={transactionId}>{transactionId}</span>
+            ))}
+          </div>
+        </details>
+      )}
     </article>
   );
 }
@@ -284,6 +302,7 @@ function NetworkFindingCard({ finding }: { finding: NetworkEvidence }) {
 export default function Home() {
   const [summary, setSummary] = useState<AlertSummary | null>(null);
   const [alerts, setAlerts] = useState<FraudAlert[]>([]);
+  const [demoScenarios, setDemoScenarios] = useState<DemoScenario[]>([]);
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [detail, setDetail] = useState<FraudAlert | null>(null);
   const [graph, setGraph] = useState<AlertGraph | null>(null);
@@ -334,6 +353,27 @@ export default function Home() {
       current = false;
     };
   }, [riskFilter, statusFilter]);
+
+  useEffect(() => {
+    let current = true;
+    Promise.all(
+      DEMO_SCENARIO_CANDIDATES.map(async (scenario) => {
+        try {
+          const alert = await getAlert(scenario.alertId);
+          const isBackedByExpectedEvidence =
+            (scenario.alertId === "FS-TX-00020001" && alert.rule_evidence.some((item) => item.rule_id === "LARGE_COLLECT_FIRST_TIME_PAYEE")) ||
+            (scenario.alertId === "FS-TX-00020002" && alert.network_evidence.some((item) => item.pattern_type === "rapid_mule_chain")) ||
+            (scenario.alertId === "FS-TX-00020006" && alert.network_evidence.some((item) => item.pattern_type === "circular_flow"));
+          return isBackedByExpectedEvidence ? scenario : null;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((results) => {
+      if (current) setDemoScenarios(results.filter((scenario): scenario is DemoScenario => scenario !== null));
+    });
+    return () => { current = false; };
+  }, []);
 
   useEffect(() => {
     if (!selectedAlertId) {
@@ -438,6 +478,13 @@ export default function Home() {
     }
   }
 
+  function openDemoScenario(alertId: string): void {
+    setRiskFilter("all");
+    setStatusFilter("all");
+    setSelectedAlertId(alertId);
+    setDetailError("");
+  }
+
   return (
     <main className="console-shell">
       <aside className="sidebar">
@@ -478,7 +525,7 @@ export default function Home() {
             <div>
               <div className="eyebrow"><span className="eyebrow-mark" /> FRAUD OPERATIONS <span className="eyebrow-divider">/</span> COMMAND CENTER</div>
               <h1>Fraud intelligence</h1>
-              <p>Review independent signals, investigate transaction relationships, and record analyst feedback.</p>
+              <p>UPI fraud can hide across ordinary transactions. Review rule, behaviour, ML and network evidence in one analyst workflow.</p>
             </div>
             <div className="intro-actions">
               <div className="feed-indicator"><span /> SYNTHETIC DEMO FEED</div>
@@ -487,6 +534,27 @@ export default function Home() {
               </button>
             </div>
           </section>
+
+          <section className="how-flow" aria-label="Fraud Sentinel investigation flow">
+            <span className="flow-step"><small>01</small>Transaction</span><ArrowRight size={14} />
+            <span className="flow-step"><small>02</small>Rules · Behaviour · ML · Network</span><ArrowRight size={14} />
+            <span className="flow-step"><small>03</small>Risk Engine</span><ArrowRight size={14} />
+            <span className="flow-step"><small>04</small>Alert + evidence</span><ArrowRight size={14} />
+            <span className="flow-step"><small>05</small>Analyst decision</span>
+          </section>
+
+          {demoScenarios.length > 0 && (
+            <section className="demo-scenarios" aria-label="Verified synthetic demo scenarios">
+              <div className="demo-scenarios-title"><span className="section-kicker">DEMO SCENARIOS</span><span>Verified against current alert evidence</span></div>
+              <div className="demo-scenario-list">
+                {demoScenarios.map((scenario) => (
+                  <button className={`demo-scenario${selectedAlertId === scenario.alertId ? " demo-scenario-active" : ""}`} type="button" key={scenario.alertId} onClick={() => openDemoScenario(scenario.alertId)}>
+                    <span>{scenario.title}</span><small>{scenario.evidenceLabel}</small><code>{scenario.alertId}</code>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
           {error && (
             <section className="api-error" role="alert">
@@ -522,7 +590,7 @@ export default function Home() {
                 </select><ChevronDown size={13} /></label>
               </div>
 
-              <div className="alert-table-head"><span>TRANSACTION / TIME</span><span>RISK</span><span>STATUS</span></div>
+              <div className="alert-table-head"><span>ALERT / TRANSACTION</span><span>RISK</span><span>STATUS</span></div>
               <div className="alert-list" aria-label="Fraud alerts">
                 {loadState === "loading" && <div className="list-state"><LoaderCircle className="spin" size={18} /> Loading alert queue…</div>}
                 {loadState === "ready" && alerts.length === 0 && <div className="list-state empty-list"><Search size={21} /><strong>No alerts in this view</strong><span>Try another risk or status filter.</span></div>}
@@ -536,9 +604,15 @@ export default function Home() {
                   >
                     <span className={`row-priority priority-${alert.risk_level}`} />
                     <span className="alert-row-main">
-                      <span className="row-id">{alert.transaction_id}</span>
-                      <span className="row-subline"><span>{formatAmount(alert.amount)}</span><i />{formatDate(alert.timestamp)}</span>
+                      <span className="row-id">{alert.alert_id}</span>
+                      <span className="row-subline"><span className="row-transaction-id">{alert.transaction_id}</span><i /><span>{formatAmount(alert.amount)}</span><i />{formatDate(alert.timestamp)}</span>
                       <span className="row-type">{transactionTitle(alert.transaction_type)}</span>
+                      <span className="row-evidence" aria-label="Detector evidence indicators">
+                        <span className={alert.rule_evidence.length ? "evidence-present evidence-rules" : "evidence-absent"} title={`Rule Engine: ${alert.rule_evidence.length} rule signals`}>R {alert.rule_evidence.length || "—"}</span>
+                        <span className={alert.anomaly_evidence?.is_anomalous ? "evidence-present evidence-anomaly" : "evidence-absent"} title={alert.anomaly_evidence ? `Isolation Forest: anomaly score ${alert.anomaly_evidence.anomaly_score.toFixed(3)}` : "Isolation Forest: no evidence"}>IF {alert.anomaly_evidence?.is_anomalous ? "!" : alert.anomaly_evidence ? "·" : "—"}</span>
+                        <span className={alert.ml_evidence?.predicted_fraud ? "evidence-present evidence-ml" : "evidence-absent"} title={alert.ml_evidence ? `LightGBM model probability ${(alert.ml_evidence.fraud_probability * 100).toFixed(1)}%` : "LightGBM: no evidence"}>ML {alert.ml_evidence?.predicted_fraud ? "!" : alert.ml_evidence ? "·" : "—"}</span>
+                        <span className={alert.network_evidence.length ? "evidence-present evidence-network" : "evidence-absent"} title={`NetworkX: ${alert.network_evidence.length} findings`}>NX {alert.network_evidence.length || "—"}</span>
+                      </span>
                     </span>
                     <span className="alert-row-risk"><strong>{alert.risk_score}</strong><span className={`risk-pill risk-${alert.risk_level}`}>{riskTitle(alert.risk_level)}</span></span>
                     <span className={`status-pill status-${alert.status}`}>{statusTitle(alert.status)}</span>
@@ -574,10 +648,10 @@ export default function Home() {
                     </div>
 
                     <div className="risk-hero">
-                      <div className={`score-orbit orbit-${detail.risk_level}`}><span className="score-caption">RISK</span><strong>{Math.round(detail.risk_score)}</strong><span className="score-out-of">/ 100</span></div>
+                      <div className={`score-orbit orbit-${detail.risk_level}`}><span className="score-caption">RISK SCORE</span><strong>{Math.round(detail.risk_score)}</strong><span className="score-out-of">/ 100</span><small className="score-decision-label">Decision support</small></div>
                       <div className="risk-hero-copy">
                         <div className="score-level">{riskTitle(detail.risk_level)} <span>·</span> {detail.risk_level === "high" ? "Investigation recommended" : detail.risk_level === "medium" ? "Review supporting evidence" : "Routine monitoring"}</div>
-                        <p>{detail.explanation_summary}</p>
+                        <div className="why-flagged-summary"><span className="section-kicker">WHY THIS ALERT WAS RAISED</span><p>{detail.explanation_summary}</p></div>
                         <div className="component-breakdown" aria-label="Backend risk score components">
                           {([
                             ["Rules", detail.rule_component, 30, "component-rules"],
@@ -605,15 +679,57 @@ export default function Home() {
                       <div className="transaction-fact"><span>Receiver account</span><strong className="mono">{detail.receiver_account}</strong></div>
                     </div>
 
-                    <div className="analyst-actions">
-                      <div className="feedback-copy"><span className="section-kicker">ANALYST FEEDBACK</span><span>Record a human review. This does not alter the model score.</span></div>
-                      <div className="feedback-buttons">
-                        <button className="feedback-button button-confirm" type="button" disabled={feedbackPending || detail.status === "confirmed_fraud"} onClick={() => void handleFeedback("confirmed_fraud")}><BadgeCheck size={15} /> Confirm Fraud</button>
-                        <button className="feedback-button button-safe" type="button" disabled={feedbackPending || detail.status === "marked_safe"} onClick={() => void handleFeedback("marked_safe")}><Check size={15} /> Mark Safe</button>
-                      </div>
-                    </div>
-                    {feedbackMessage && <div className={`feedback-message${feedbackMessage.includes("Unable") || feedbackMessage.includes("API") ? " feedback-error" : ""}`} role="status">{feedbackMessage}</div>}
                   </article>
+
+                  <section className="evidence-section" aria-labelledby="evidence-title">
+                    <div className="section-heading"><div><div className="section-kicker">INDEPENDENT SIGNALS</div><h2 id="evidence-title">Evidence breakdown</h2></div><span className="independent-tag"><Sparkles size={13} /> Separate detector outputs</span></div>
+                    <div className="evidence-grid">
+                      <article className="panel evidence-card rule-card">
+                        <div className="evidence-card-heading"><span className="evidence-icon rule-icon"><ShieldAlert size={16} /></span><div><h3>Rule Engine</h3><span>Deterministic signals</span></div><span className={`signal-state${detail.rule_evidence.length ? " signal-alert" : ""}`}>{detail.rule_evidence.length ? `${detail.rule_evidence.length} triggered` : "No trigger"}</span></div>
+                        {detail.rule_evidence.length === 0 ? <div className="evidence-empty">No rule signals contributed to this alert.</div> : <div className="rule-list">
+                          {detail.rule_evidence.map((signal, index) => (
+                            <div className="rule-item" key={`${signal.rule_id}-${index}`}>
+                              <div className="rule-item-top"><strong>{evidenceLabel(signal.rule_id)}</strong><span className={`severity severity-${signal.severity}`}>{signal.severity}</span></div>
+                              <p>{signal.reason}</p>
+                              <div className="rule-values">{Object.entries(signal.evidence).map(([key, value]) => <span key={key}><small>{evidenceLabel(key)}</small><strong>{typeof value === "number" && key.includes("amount") ? formatAmount(value) : Array.isArray(value) ? value.join(" → ") : String(value ?? "—")}</strong></span>)}</div>
+                            </div>
+                          ))}
+                        </div>}
+                      </article>
+
+                      <article className="panel evidence-card anomaly-card">
+                        <div className="evidence-card-heading"><span className="evidence-icon anomaly-icon"><Activity size={16} /></span><div><h3>Behavioural Anomaly</h3><span>Isolation Forest signal</span></div><span className={`signal-state${detail.anomaly_evidence?.is_anomalous ? " signal-alert" : ""}`}>{detail.anomaly_evidence ? detail.anomaly_evidence.is_anomalous ? "Anomalous" : "Not anomalous" : "No signal"}</span></div>
+                        {!detail.anomaly_evidence ? <div className="evidence-empty">No anomaly evidence returned.</div> : <>
+                          <div className="signal-score-row"><strong>{detail.anomaly_evidence.anomaly_score.toFixed(3)}</strong><span>anomaly score <i>· higher is more unusual</i></span></div>
+                          <div className="feature-grid">{Object.entries(detail.anomaly_evidence.feature_values).filter(([key]) => ["log_amount", "first_time_payee", "sender_account_age_days", "receiver_account_age_days", "sender_outgoing_count_1h", "receiver_incoming_count_1h"].includes(key)).map(([key, value]) => <div className="feature-cell" key={key}><span>{evidenceLabel(key)}</span><strong>{typeof value === "number" && key.includes("age") ? `${value.toFixed(0)} days` : String(value)}</strong></div>)}</div>
+                        </>}
+                        <div className="model-disclaimer">Behavioural anomaly signal · not proof of fraud</div>
+                      </article>
+
+                      <article className="panel evidence-card ml-card">
+                        <div className="evidence-card-heading"><span className="evidence-icon ml-icon"><Gauge size={16} /></span><div><h3>ML Prediction</h3><span>LightGBM supervised signal · {detail.ml_evidence?.dataset_partition === "test" ? "holdout" : detail.ml_evidence?.dataset_partition === "train" ? "train" : "unavailable"}</span></div><span className={`signal-state${detail.ml_evidence?.predicted_fraud ? " signal-alert" : ""}`}>{detail.ml_evidence ? detail.ml_evidence.predicted_fraud ? "Predicted fraud" : "Predicted safe" : "No signal"}</span></div>
+                        {!detail.ml_evidence ? <div className="evidence-empty">No model prediction returned.</div> : <>
+                          <div className="probability-row"><strong>{(detail.ml_evidence.fraud_probability * 100).toFixed(1)}<small>%</small></strong><div className="probability-track"><i style={{ width: `${detail.ml_evidence.fraud_probability * 100}%` }} /></div></div>
+                          <div className="ml-result"><span>Model output</span><strong className={detail.ml_evidence.predicted_fraud ? "ml-predicted" : ""}>{detail.ml_evidence.predicted_fraud ? "Predicted fraud" : "Predicted safe"}</strong></div>
+                          <div className="model-disclaimer">Model probability is a signal, not a fraud determination.</div>
+                        </>}
+                      </article>
+
+                      <article className="panel evidence-card network-card" id="network">
+                        <div className="evidence-card-heading"><span className="evidence-icon network-icon"><Network size={16} /></span><div><h3>Network Analysis</h3><span>NetworkX relationship signals</span></div><span className={`signal-state${detail.network_evidence.length ? " signal-network" : ""}`}>{detail.network_evidence.length ? `${detail.network_evidence.length} patterns` : "No pattern"}</span></div>
+                        {detail.network_evidence.length === 0 ? <div className="evidence-empty">No network evidence available for this alert.</div> : <div className="network-finding-list">{detail.network_evidence.map((finding, index) => <NetworkFindingCard finding={finding} key={`${finding.pattern_type}-${index}`} />)}</div>}
+                      </article>
+                    </div>
+                  </section>
+
+                  <section className="panel graph-panel">
+                    <div className="panel-heading graph-heading">
+                      <div><div className="section-kicker">RELATIONSHIP VIEW</div><h2>Transaction network</h2><p>Accounts are nodes. Directed edges are observed transactions.</p></div>
+                      <div className="graph-counts"><span><strong>{graph?.nodes.length ?? 0}</strong> accounts</span><span><strong>{graph?.edges.length ?? 0}</strong> transactions</span></div>
+                    </div>
+                    {detail.network_evidence.length === 0 ? <div className="graph-empty"><Network size={22} /><span>No network evidence available for this alert.</span></div> : !graph ? <div className="graph-empty"><LoaderCircle className="spin" size={19} /><span>Loading transaction network…</span></div> : graph.edges.length === 0 ? <div className="graph-empty"><Network size={22} /><span>No transaction edges available for this alert.</span></div> : <NetworkDiagram graph={graph} selectedTransactionId={selectedGraphTransactionId || detail.transaction_id} onSelectTransaction={(transactionId) => void inspectTransaction(transactionId)} />}
+                    {relatedEvidence && <div className="related-transaction"><div><span className="section-kicker">SELECTED EDGE</span><strong>{relatedEvidence.transaction_id}</strong></div><span>{relatedEvidence.sender_account} <ArrowRight size={13} /> {relatedEvidence.receiver_account}</span><span>{formatAmount(relatedEvidence.amount)}</span><span>{formatDate(relatedEvidence.timestamp)}</span><button type="button" onClick={() => setRelatedEvidence(null)} aria-label="Close transaction detail"><X size={15} /></button></div>}
+                  </section>
 
                   <section className="panel analyst-explanation" aria-labelledby="analyst-explanation-title">
                     <div className="explanation-heading">
@@ -643,54 +759,13 @@ export default function Home() {
                     </div>}
                   </section>
 
-                  <section className="evidence-section" aria-labelledby="evidence-title">
-                    <div className="section-heading"><div><div className="section-kicker">INDEPENDENT SIGNALS</div><h2 id="evidence-title">Evidence breakdown</h2></div><span className="independent-tag"><Sparkles size={13} /> Separate detector outputs</span></div>
-                    <div className="evidence-grid">
-                      <article className="panel evidence-card rule-card">
-                        <div className="evidence-card-heading"><span className="evidence-icon rule-icon"><ShieldAlert size={16} /></span><div><h3>Rule evidence</h3><span>Deterministic signals</span></div><span className="evidence-count">{detail.rule_evidence.length}</span></div>
-                        {detail.rule_evidence.length === 0 ? <div className="evidence-empty">No rule signals contributed to this alert.</div> : <div className="rule-list">
-                          {detail.rule_evidence.map((signal, index) => (
-                            <div className="rule-item" key={`${signal.rule_id}-${index}`}>
-                              <div className="rule-item-top"><strong>{evidenceLabel(signal.rule_id)}</strong><span className={`severity severity-${signal.severity}`}>{signal.severity}</span></div>
-                              <p>{signal.reason}</p>
-                              <div className="rule-values">{Object.entries(signal.evidence).map(([key, value]) => <span key={key}><small>{evidenceLabel(key)}</small><strong>{typeof value === "number" && key.includes("amount") ? formatAmount(value) : Array.isArray(value) ? value.join(" → ") : String(value ?? "—")}</strong></span>)}</div>
-                            </div>
-                          ))}
-                        </div>}
-                      </article>
-
-                      <article className="panel evidence-card anomaly-card">
-                        <div className="evidence-card-heading"><span className="evidence-icon anomaly-icon"><Activity size={16} /></span><div><h3>Behavioural anomaly</h3><span>Isolation Forest signal</span></div><span className={`signal-state${detail.anomaly_evidence?.is_anomalous ? " signal-alert" : ""}`}>{detail.anomaly_evidence ? detail.anomaly_evidence.is_anomalous ? "Anomalous" : "Normal" : "No signal"}</span></div>
-                        {!detail.anomaly_evidence ? <div className="evidence-empty">No anomaly evidence returned.</div> : <>
-                          <div className="signal-score-row"><strong>{detail.anomaly_evidence.anomaly_score.toFixed(3)}</strong><span>anomaly score <i>· higher is more unusual</i></span></div>
-                          <div className="feature-grid">{Object.entries(detail.anomaly_evidence.feature_values).filter(([key]) => ["log_amount", "first_time_payee", "sender_account_age_days", "receiver_account_age_days", "sender_outgoing_count_1h", "receiver_incoming_count_1h"].includes(key)).map(([key, value]) => <div className="feature-cell" key={key}><span>{evidenceLabel(key)}</span><strong>{typeof value === "number" && key.includes("age") ? `${value.toFixed(0)} days` : String(value)}</strong></div>)}</div>
-                        </>}
-                        <div className="model-disclaimer">Behavioural anomaly signal · not proof of fraud</div>
-                      </article>
-
-                      <article className="panel evidence-card ml-card">
-                        <div className="evidence-card-heading"><span className="evidence-icon ml-icon"><Gauge size={16} /></span><div><h3>ML fraud probability</h3><span>LightGBM supervised signal</span></div><span className="evidence-count">{detail.ml_evidence?.dataset_partition === "test" ? "HOLDOUT" : detail.ml_evidence?.dataset_partition === "train" ? "TRAIN" : "—"}</span></div>
-                        {!detail.ml_evidence ? <div className="evidence-empty">No model prediction returned.</div> : <>
-                          <div className="probability-row"><strong>{(detail.ml_evidence.fraud_probability * 100).toFixed(1)}<small>%</small></strong><div className="probability-track"><i style={{ width: `${detail.ml_evidence.fraud_probability * 100}%` }} /></div></div>
-                          <div className="ml-result"><span>Model output</span><strong className={detail.ml_evidence.predicted_fraud ? "ml-predicted" : ""}>{detail.ml_evidence.predicted_fraud ? "Predicted fraud" : "Predicted safe"}</strong></div>
-                          <div className="model-disclaimer">Model probability is a signal, not a fraud determination.</div>
-                        </>}
-                      </article>
-
-                      <article className="panel evidence-card network-card" id="network">
-                        <div className="evidence-card-heading"><span className="evidence-icon network-icon"><Network size={16} /></span><div><h3>Network evidence</h3><span>NetworkX relationship signals</span></div><span className="evidence-count">{detail.network_evidence.length}</span></div>
-                        {detail.network_evidence.length === 0 ? <div className="evidence-empty">No network evidence available for this alert.</div> : <div className="network-finding-list">{detail.network_evidence.map((finding, index) => <NetworkFindingCard finding={finding} key={`${finding.pattern_type}-${index}`} />)}</div>}
-                      </article>
+                  <section className="panel analyst-decision-panel">
+                    <div className="feedback-copy"><span className="section-kicker">ANALYST DECISION</span><span>Record your review after inspecting the alert evidence. This does not alter the model score.</span></div>
+                    <div className="feedback-buttons">
+                      <button className="feedback-button button-confirm" type="button" disabled={feedbackPending || detail.status === "confirmed_fraud"} onClick={() => void handleFeedback("confirmed_fraud")}><BadgeCheck size={15} /> Confirm Fraud</button>
+                      <button className="feedback-button button-safe" type="button" disabled={feedbackPending || detail.status === "marked_safe"} onClick={() => void handleFeedback("marked_safe")}><Check size={15} /> Mark Safe</button>
                     </div>
-                  </section>
-
-                  <section className="panel graph-panel">
-                    <div className="panel-heading graph-heading">
-                      <div><div className="section-kicker">RELATIONSHIP VIEW</div><h2>Transaction network</h2><p>Accounts are nodes. Directed edges are observed transactions.</p></div>
-                      <div className="graph-counts"><span><strong>{graph?.nodes.length ?? 0}</strong> accounts</span><span><strong>{graph?.edges.length ?? 0}</strong> transactions</span></div>
-                    </div>
-                    {detail.network_evidence.length === 0 ? <div className="graph-empty"><Network size={22} /><span>No network evidence available for this alert.</span></div> : !graph ? <div className="graph-empty"><LoaderCircle className="spin" size={19} /><span>Loading transaction network…</span></div> : graph.edges.length === 0 ? <div className="graph-empty"><Network size={22} /><span>No transaction edges available for this alert.</span></div> : <NetworkDiagram graph={graph} selectedTransactionId={selectedGraphTransactionId || detail.transaction_id} onSelectTransaction={(transactionId) => void inspectTransaction(transactionId)} />}
-                    {relatedEvidence && <div className="related-transaction"><div><span className="section-kicker">SELECTED EDGE</span><strong>{relatedEvidence.transaction_id}</strong></div><span>{relatedEvidence.sender_account} <ArrowRight size={13} /> {relatedEvidence.receiver_account}</span><span>{formatAmount(relatedEvidence.amount)}</span><span>{formatDate(relatedEvidence.timestamp)}</span><button type="button" onClick={() => setRelatedEvidence(null)} aria-label="Close transaction detail"><X size={15} /></button></div>}
+                    {feedbackMessage && <div className={`feedback-message${feedbackMessage.includes("Unable") || feedbackMessage.includes("API") ? " feedback-error" : ""}`} role="status">{feedbackMessage}</div>}
                   </section>
                 </>
               )}

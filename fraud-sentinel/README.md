@@ -15,34 +15,53 @@ fraud-sentinel/
 ## Architecture
 
 ```text
-                    FRAUD SENTINEL
-                         |
-              +----------+----------+
-              |                     |
-          FRONTEND               BACKEND
-        Next.js/TS              FastAPI
-              |                     |
-              |              +------+------+
-              |              |             |
-              |          Detection      Analytics
-              |              |
-              |      +-------+--------+
-              |      |       |        |
-              |    Rules     ML     NetworkX
-              |             |
-              |      Isolation Forest
-              |      LightGBM
-              |
-              +--------- REST API --------+
+Synthetic Transactions
+    |
+    +--> Rules
+    +--> Isolation Forest
+    +--> LightGBM
+    +--> NetworkX
+        |
+       Independent Evidence
+        |
+      Risk Engine
+        |
+    Unified Fraud Alerts
+        |
+        FastAPI
+        |
+    Next.js Analyst Console
+        |
+   Optional AI Explanation
 ```
 
-The eventual detection flow is planned as:
+## Problem
 
-```text
-Detection Engine -> Structured Evidence -> Risk Engine -> Claude -> Human-readable explanation
-```
+UPI fraud can look ordinary one transaction at a time while involving rapid movement across accounts, collect requests to new payees, or circular money flows. Analysts need the transaction context and the relationships together to understand why an alert was raised.
 
-Fraud decisions will be made by deterministic rules, trained models, and network analysis. Claude is strictly an explanation layer: it will receive structured evidence from the detection engine and will not decide whether a transaction is fraudulent.
+## Solution
+
+Fraud Sentinel keeps deterministic rules, behavioural anomaly detection, supervised ML, and transaction-network analysis as independent evidence generators. The Risk Engine combines only their structured outputs into a demo decision-support score and alert. An optional LLM can explain that existing evidence for an analyst; it cannot calculate risk or decide fraud.
+
+## Demo Scenarios
+
+The generated synthetic dataset includes three engineered examples that can be opened from the dashboard's **Demo Scenarios** shortcuts when the corresponding alert and evidence are present:
+
+- `FS-TX-00020001`: large collect request to a first-time payee.
+- `FS-TX-00020002`: rapid multi-account / mule-chain transfers.
+- `FS-TX-00020006`: circular money-flow pattern.
+
+The dashboard loads each shortcut from the live alert API and checks for its expected evidence; it does not create front-end sample alerts.
+
+## Dataset Honesty and Limitations
+
+- The current dataset has **20,009 synthetic transactions** covering **14 days**.
+- It has **9 injected fraud-scenario rows**; this is an engineered demo balance, not real-world UPI fraud prevalence.
+- The small number of positive rows makes supervised holdout metrics highly unstable and not production validation.
+- NetworkX analysis is bounded demo-scale pattern analysis, not a production graph database or guaranteed fraud-ring detector.
+- Risk scores and thresholds are demo decision-support signals, not calibrated probabilities or proof of fraud.
+- Feedback and alerts use generated JSON plus in-memory status updates; there is no database or production transaction blocking.
+- No real customer transaction data is included.
 
 ## Backend Setup
 
@@ -94,7 +113,7 @@ The generator keeps baseline creation, scenario injection, and dataset validatio
 - A four-transfer rapid path through five accounts, with 35 seconds between transfers.
 - A four-transfer directed cycle through four accounts, with 45 seconds between transfers.
 
-Fraud labels are included for later supervised-model evaluation. These scenario counts are deliberately engineered test cases, not an estimate of real UPI fraud prevalence. Synthetic data is used because the project does not yet have an authorized transaction dataset; it enables data-contract, pipeline, and later model-evaluation work without exposing real customer data. Generated labels are ground truth only: this phase produces no model predictions, risk scores, or detection decisions.
+Fraud labels are ground truth for supervised-model training/evaluation and are not inference features for the Rule Engine, Isolation Forest, NetworkX analysis, Risk Engine, or analyst explanation. The scenario counts are deliberately engineered test cases, not an estimate of real UPI fraud prevalence. Synthetic data is used because the project does not have an authorized transaction dataset; it enables pipeline and demo work without exposing customer data. Model predictions and risk scores are demonstration signals only, not validated real-world performance or a final fraud decision.
 
 The validation step checks transaction ID uniqueness, timestamps and amounts, account/device references, label consistency, minimum baseline size, and structural presence of all three injected patterns. It prints total, safe, fraud, and per-pattern counts and fails generation if an invariant is broken.
 

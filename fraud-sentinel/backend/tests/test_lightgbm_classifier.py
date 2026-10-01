@@ -24,7 +24,7 @@ def synthetic_transactions(baseline_count: int = 35) -> list[Transaction]:
     return list(dataset.transactions)
 
 
-def test_settings() -> Settings:
+def make_test_settings() -> Settings:
     return Settings(
         lightgbm_test_size=0.2,
         lightgbm_random_state=37,
@@ -40,7 +40,7 @@ def test_settings() -> Settings:
 class LightGBMClassifierTests(unittest.TestCase):
     def setUp(self) -> None:
         self.transactions = synthetic_transactions()
-        self.settings = test_settings()
+        self.settings = make_test_settings()
 
     def test_feature_matrix_excludes_ids_labels_and_patterns(self) -> None:
         features = LightGBMFraudClassifier.extract_features(self.transactions)

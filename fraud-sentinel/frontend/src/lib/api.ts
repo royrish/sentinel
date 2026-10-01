@@ -105,6 +105,14 @@ export interface FeedbackResponse {
   status: FeedbackStatus;
 }
 
+export interface AnalystExplanation {
+  source: "llm" | "deterministic";
+  summary: string;
+  why_flagged: string[];
+  key_evidence: string[];
+  analyst_action: string;
+}
+
 export interface AlertsQuery {
   risk_level?: RiskLevel;
   status?: AlertStatus;
@@ -160,6 +168,13 @@ export function getAlerts(query: AlertsQuery = {}): Promise<AlertsResponse> {
 
 export function getAlert(alertId: string): Promise<FraudAlert> {
   return apiRequest<FraudAlert>(`/api/alerts/${encodeURIComponent(alertId)}`);
+}
+
+export function getAlertExplanation(alertId: string): Promise<AnalystExplanation> {
+  return apiRequest<AnalystExplanation>(
+    `/api/alerts/${encodeURIComponent(alertId)}/explanation`,
+    { method: "POST" },
+  );
 }
 
 export function getAlertGraph(alertId: string): Promise<AlertGraph> {

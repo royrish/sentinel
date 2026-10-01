@@ -235,6 +235,14 @@ FastAPI documents the typed request and response models at [http://localhost:800
 
 Thresholds and scores are for the synthetic hackathon demo, not calibrated operational decisions. The supervised model was trained/evaluated on a synthetic dataset with very few positive examples, and its training-partition model signals are in-sample. Do not interpret the combined score, a high-risk level, or an alert as a confirmed fraud determination.
 
+## AI Analyst Explanation
+
+The optional explanation layer only turns an alert's existing structured evidence into analyst-friendly text. Rules and models, the NetworkX layer, and the Risk Engine remain the source of detection evidence and risk scores. The LLM does not calculate risk, decide whether fraud occurred, alter alert status, or replace any detector. The service sends a bounded allow-list of transaction identifiers/attributes, existing score/level, and rule/anomaly/ML/network evidence; it excludes ground-truth `label` and `fraud_pattern`, alert status, raw history, and arbitrary internal objects.
+
+`POST /api/alerts/{alert_id}/explanation` returns `source`, `summary`, `why_flagged`, `key_evidence`, and `analyst_action`. With `LLM_ENABLED=false` (the default), a concise deterministic explanation is returned without an API key. Missing configuration or provider errors also fall back deterministically. Optional Anthropic Messages support is enabled only when `LLM_ENABLED=true`, `LLM_PROVIDER=anthropic`, `LLM_API_KEY`, and `LLM_MODEL` are configured; set `LLM_TIMEOUT_SECONDS` to adjust the request timeout. Put the key only in the local ignored `backend/.env`; no API key is committed. Explanations are cached in memory per alert until the backend restarts.
+
+This is an optional explanation aid, not a production-ready or authoritative fraud determination. The analyst remains responsible for review; the suggested action is investigation, never automatic blocking.
+
 ## NetworkX Transaction-Network Evidence
 
 The NetworkX layer analyzes relationships across transactions that are not visible from a single row. It produces independent structured network evidence only; it does not assign a final fraud verdict or risk score and does not combine its results with rules, Isolation Forest, or LightGBM.
@@ -270,4 +278,4 @@ The frontend is available at `http://localhost:3000`. Its backend base URL is co
 
 ## Current Scope
 
-The backend provides configuration, local-development CORS, a typed health endpoint, reproducible synthetic transaction generation, deterministic rule evidence, an observation-based Isolation Forest signal, a supervised LightGBM model signal, independent NetworkX transaction-network evidence, a demo Risk Engine, unified alerts, and alert APIs. The frontend remains a product shell. Claude/LLM integration, database, authentication, and deployment are not implemented. Claude remains planned as an optional explanation layer for structured evidence, never as the fraud decision-maker.
+The backend provides configuration, local-development CORS, a typed health endpoint, reproducible synthetic transaction generation, independent rule/anomaly/ML/network evidence, a demo Risk Engine, unified alerts, alert APIs, and an optional evidence-only analyst explanation with deterministic fallback. The frontend remains an analyst console. Database, authentication, and deployment are not implemented. The optional LLM is never the fraud decision-maker.

@@ -15,7 +15,9 @@ from app.models.fraud_alert import (
     RiskLevel,
     TransactionRiskEvidence,
 )
+from app.models.explanation import AnalystExplanation
 from app.services.alert_store import InMemoryAlertStore
+from app.services.explanation_service import ExplanationService
 
 router = APIRouter()
 
@@ -30,7 +32,20 @@ def get_alert_store(request: Request) -> InMemoryAlertStore:
     return store
 
 
+def get_explanation_service(request: Request) -> ExplanationService:
+    service = getattr(request.app.state, "explanation_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Explanation service is not loaded.",
+        )
+    return service
+
+
 AlertStoreDependency = Annotated[InMemoryAlertStore, Depends(get_alert_store)]
+ExplanationServiceDependency = Annotated[
+    ExplanationService, Depends(get_explanation_service)
+]
 
 
 @router.get("/alerts", response_model=AlertsResponse)
@@ -58,6 +73,18 @@ def get_alert(alert_id: str, store: AlertStoreDependency) -> FraudAlert:
     if alert is None:
         raise HTTPException(status_code=404, detail="Alert not found.")
     return alert
+
+
+@router.post("/alerts/{alert_id}/explanation", response_model=AnalystExplanation)
+def get_alert_explanation(
+    alert_id: str,
+    store: AlertStoreDependency,
+    explanation_service: ExplanationServiceDependency,
+) -> AnalystExplanation:
+    alert = store.get_alert(alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail="Alert not found.")
+    return explanation_service.explain(alert)
 
 
 @router.get(

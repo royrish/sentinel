@@ -32,6 +32,7 @@ import { useEffect, useState } from "react";
 
 import {
   getAlert,
+  getAlertExplanation,
   getAlertGraph,
   getAlerts,
   getSummary,
@@ -40,6 +41,7 @@ import {
   type AlertGraph,
   type AlertStatus,
   type AlertSummary,
+  type AnalystExplanation,
   type FeedbackStatus,
   type FraudAlert,
   type NetworkEvidence,
@@ -293,6 +295,9 @@ export default function Home() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
   const [detailError, setDetailError] = useState("");
+  const [analystExplanation, setAnalystExplanation] = useState<AnalystExplanation | null>(null);
+  const [explanationLoading, setExplanationLoading] = useState(false);
+  const [explanationError, setExplanationError] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackPending, setFeedbackPending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -339,6 +344,8 @@ export default function Home() {
     let current = true;
     setDetailLoading(true);
     setDetailError("");
+    setAnalystExplanation(null);
+    setExplanationError("");
     setFeedbackMessage("");
     setRelatedEvidence(null);
     setSelectedGraphTransactionId("");
@@ -411,6 +418,23 @@ export default function Home() {
       setRelatedEvidence(await getTransactionEvidence(transactionId));
     } catch {
       setDetailError("Transaction evidence could not be loaded.");
+    }
+  }
+
+  async function generateAnalystExplanation(): Promise<void> {
+    if (!detail) return;
+    setExplanationLoading(true);
+    setExplanationError("");
+    try {
+      setAnalystExplanation(await getAlertExplanation(detail.alert_id));
+    } catch (requestError) {
+      setExplanationError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to retrieve an analyst explanation.",
+      );
+    } finally {
+      setExplanationLoading(false);
     }
   }
 
@@ -590,6 +614,34 @@ export default function Home() {
                     </div>
                     {feedbackMessage && <div className={`feedback-message${feedbackMessage.includes("Unable") || feedbackMessage.includes("API") ? " feedback-error" : ""}`} role="status">{feedbackMessage}</div>}
                   </article>
+
+                  <section className="panel analyst-explanation" aria-labelledby="analyst-explanation-title">
+                    <div className="explanation-heading">
+                      <div className="explanation-heading-copy">
+                        <span className="evidence-icon explanation-icon"><Sparkles size={16} /></span>
+                        <div><div className="section-kicker">OPTIONAL EXPLANATION</div><h2 id="analyst-explanation-title">AI Analyst Explanation</h2></div>
+                      </div>
+                      <div className="explanation-heading-actions">
+                        {analystExplanation && <span className={`source-badge source-${analystExplanation.source}`}>{analystExplanation.source === "llm" ? "AI" : "Deterministic"}</span>}
+                        <button className="explanation-generate" type="button" onClick={() => void generateAnalystExplanation()} disabled={explanationLoading}>
+                          {explanationLoading ? <LoaderCircle size={14} className="spin" /> : <Sparkles size={14} />}
+                          {explanationLoading ? "Generating…" : analystExplanation ? "Regenerate" : "Generate Explanation"}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="explanation-disclaimer">Explanation only. The detector evidence and backend risk score remain authoritative; no fraud decision is made here.</p>
+                    {explanationError && <div className="explanation-error" role="alert"><AlertTriangle size={14} />{explanationError}</div>}
+                    {!analystExplanation && !explanationLoading && !explanationError && <div className="explanation-placeholder">Request a concise explanation grounded in this alert’s structured evidence.</div>}
+                    {explanationLoading && <div className="explanation-placeholder"><LoaderCircle size={15} className="spin" /> Preparing an analyst explanation from the supplied evidence…</div>}
+                    {analystExplanation && <div className="explanation-content">
+                      <p className="explanation-summary">{analystExplanation.summary}</p>
+                      <div className="explanation-columns">
+                        <div className="explanation-list"><h3>Why this alert was surfaced</h3>{analystExplanation.why_flagged.length ? <ul>{analystExplanation.why_flagged.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul> : <p>No specific trigger was returned.</p>}</div>
+                        <div className="explanation-list"><h3>Key evidence</h3>{analystExplanation.key_evidence.length ? <ul>{analystExplanation.key_evidence.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul> : <p>No key evidence was returned.</p>}</div>
+                      </div>
+                      <div className="analyst-action"><span>Suggested analyst action</span><p>{analystExplanation.analyst_action}</p></div>
+                    </div>}
+                  </section>
 
                   <section className="evidence-section" aria-labelledby="evidence-title">
                     <div className="section-heading"><div><div className="section-kicker">INDEPENDENT SIGNALS</div><h2 id="evidence-title">Evidence breakdown</h2></div><span className="independent-tag"><Sparkles size={13} /> Separate detector outputs</span></div>

@@ -12,6 +12,7 @@ from app.api.health import router as health_router
 from app.config import get_settings
 from app.models.fraud_alert import FraudAlertDataset
 from app.services.alert_store import InMemoryAlertStore
+from app.services.explanation_service import ExplanationService
 from app.services.risk_engine import generate_fraud_alert_dataset
 
 settings = get_settings()
@@ -30,6 +31,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
         DEFAULT_ALERT_ARTIFACT.read_text(encoding="utf-8")
     )
     application.state.alert_store = InMemoryAlertStore(dataset)
+    application.state.explanation_service = ExplanationService(settings=settings)
     yield
 
 

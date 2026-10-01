@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     risk_medium_threshold: float = Field(default=30, ge=0, le=100)
     risk_high_threshold: float = Field(default=70, ge=0, le=100)
     risk_alert_threshold: float = Field(default=30, ge=0, le=100)
+    llm_enabled: bool = False
+    llm_provider: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_timeout_seconds: float = Field(default=15, gt=0, le=120)
 
     model_config = SettingsConfigDict(
         env_file=".env",
